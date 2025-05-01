@@ -2,6 +2,7 @@ package main
 
 import (
     "bufio"
+    "flag"
     "fmt"
     "log"
     "os"
@@ -17,23 +18,23 @@ type Person struct {
 }
 
 const ContactFile = "contacts.ht"
-const DataFile = "weekly.ht"
+const DataFile = "test.ht"
 
 func main() {
-    contactsF, err := os.Open(ContactFile); check(err)
-    defer contactsF.Close()
+    force := flag.Bool("f", false, "skip checks and send email")
 
     contacts := map[string]Person{}
-    for sc := bufio.NewScanner(contactsF); sc.Scan(); {
+    contactFile, err := os.Open(ContactFile); check(err)
+    defer contactFile.Close()
+    for sc := bufio.NewScanner(contactFile); sc.Scan(); {
         n, e := splitTuple(sc.Text(), " ")
         contacts[n] = Person{name: n, email: e}
     }
 
-    dataFile, err := os.Open(DataFile); check(err)
-    defer dataFile.Close()
-
     chores := []string{}
     people := []string{}
+    dataFile, err := os.Open(DataFile); check(err)
+    defer dataFile.Close()
     sc := bufio.NewScanner(dataFile)
     for sc.Scan() && sc.Text() != "---" {
         person := normalize(sc.Text());
@@ -58,9 +59,16 @@ func main() {
     est, _ := time.LoadLocation("EST")
     _, week := time.Now().In(est).ISOWeek()
 
-    if week != lastWeek {
+    if *force || week != lastWeek {
         rotation++
-        // notify
+        login()
+        content := MailContent{
+            subject: "Test Message",
+            body:    "Hello, this is chore bot.<br/>",
+        }
+        send(content, []string{ contacts[people[0]].email })
+    } else {
+        fmt.Println("Already notified for this week. Use -f to force.")
     }
 
     rotationFile, err := os.Create(rtnFileName); check(err)
