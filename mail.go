@@ -5,7 +5,6 @@ import (
     "fmt"
     "log"
     "os"
-    "time"
 
     "github.com/joho/godotenv"
     "gopkg.in/gomail.v2"
@@ -13,7 +12,7 @@ import (
 
 type MailContent struct {
     subject string
-    message string
+    body    string
 }
 
 var sender gomail.SendCloser
@@ -35,14 +34,9 @@ func send(cont MailContent, to []string) {
     m.SetHeader("From", user)
     m.SetHeader("To", to...)
     m.SetHeader("Subject", cont.subject)
+    m.SetBody("text/html", cont.body)
 
-    est, _ := time.LoadLocation("EST")
-    t := time.Now().In(est)
-
-    body := fmt.Sprintf("%s, %s %d, %d<br/><br/>%s<br/>Autobot - bot things<br/>Bryn - human things<br/><br/>Yours truly,<br/>Chore Bot", t.Weekday(), t.Month(), t.Day(), t.Year(), cont.message)
-    m.SetBody("text/html", body)
-
-    fmt.Printf("\nTo: %v\nSubject: %s\nMessage:\n%s\n\n", to, cont.subject, body)
+    fmt.Printf("\nTo: %v\nSubject: %s\nMessage:\n%s\n\n", to, cont.subject, cont.body)
     fmt.Print("Send? ")
 
     sc := bufio.NewScanner(os.Stdin)

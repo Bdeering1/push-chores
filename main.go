@@ -22,6 +22,8 @@ const DataFile = "weekly.ht"
 
 func main() {
     force := flag.Bool("f", false, "skip checks and send email")
+    fRotation := flag.Int("r", -1, "manually set rotation")
+    testOnly := flag.Bool("t", false, "send test email without affecting rotation")
     flag.Parse()
 
     contacts := map[string]Person{}
@@ -45,6 +47,7 @@ func main() {
             if *force { continue }
             log.Fatalf("%s not in contacts", person)
         }
+        if *testOnly { continue }
         to = append(to, contacts[person].email)
     }
     for sc.Scan() {
@@ -63,15 +66,17 @@ func main() {
     }
 
     est, _ := time.LoadLocation("EST")
-    _, week := time.Now().In(est).ISOWeek()
+    t := time.Now().In(est)
+    _, week := t.ISOWeek()
 
     if *force || week != lastWeek {
-        rotation++
+        if !*testOnly { rotation++ }
+        if *fRotation != -1 { rotation = *fRotation }
         login()
 
         content := MailContent{
             subject: "Weekly Chore Rotation",
-            message: "Chores this week:",
+            body: craftMessage(t, rotation, people, chores),
         }
         to = append(to, contacts["automail"].email)
         send(content, to)
@@ -79,10 +84,31 @@ func main() {
         fmt.Println("Already notified for this week. Use -f to force.")
     }
 
+    if *testOnly { return }
     rotationFile, err := os.Create(rtnFileName); check(err)
     defer rotationFile.Close()
     s := fmt.Sprintf("%d %d", week, rotation)
     _, err = rotationFile.WriteString(s); check(err)
+}
+
+func craftMessage(t time.Time, rot int, people []string, chores []string) string {
+    signoffs := []string{
+        "Yours truly",
+        "Sincerely",
+        "Warm regards",
+        "All the best",
+        "Respectfully",
+        "Cheers",
+        "Cordially",
+        "Have a great week",
+        "Keep up the good work",
+    }
+
+    msg := fmt.Sprintf("%s, %s %d, %d<br/><br/>Chores this week:<br/>", t.Weekday(), t.Month(), t.Day(), t.Year())
+    for i, p := range people {
+        msg += fmt.Sprintf("%s - %s<br/>", p, chores[(i + rot) % len(chores)])
+    }
+    return msg + fmt.Sprintf("<br/>%s,<br/>Chore Bot", signoffs[rot % len(signoffs)])
 }
 
 func splitTuple(s, sep string) (string, string) {
