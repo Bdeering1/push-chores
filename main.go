@@ -18,10 +18,11 @@ type Person struct {
 }
 
 const ContactFile = "contacts.ht"
-const DataFile = "test.ht"
+const DataFile = "weekly.ht"
 
 func main() {
     force := flag.Bool("f", false, "skip checks and send email")
+    flag.Parse()
 
     contacts := map[string]Person{}
     contactFile, err := os.Open(ContactFile); check(err)
@@ -33,13 +34,18 @@ func main() {
 
     chores := []string{}
     people := []string{}
+    to := []string{}
     dataFile, err := os.Open(DataFile); check(err)
     defer dataFile.Close()
     sc := bufio.NewScanner(dataFile)
     for sc.Scan() && sc.Text() != "---" {
         person := normalize(sc.Text());
-        checkDict(contacts, person, "'%s' not in contacts")
         people = append(people, person)
+        if _, ok := contacts[person]; !ok {
+            if *force { continue }
+            log.Fatalf("%s not in contacts", person)
+        }
+        to = append(to, contacts[person].email)
     }
     for sc.Scan() {
         chores = append(chores, normalize(sc.Text()))
@@ -62,11 +68,13 @@ func main() {
     if *force || week != lastWeek {
         rotation++
         login()
+
         content := MailContent{
-            subject: "Test Message",
-            body:    "Hello, this is chore bot.<br/>",
+            subject: "Weekly Chore Rotation",
+            message: "Chores this week:",
         }
-        send(content, []string{ contacts[people[0]].email })
+        to = append(to, contacts["automail"].email)
+        send(content, to)
     } else {
         fmt.Println("Already notified for this week. Use -f to force.")
     }
@@ -87,15 +95,11 @@ func normalize(s string) string {
 }
 
 func rotationFileName(f string) string {
-    return fmt.Sprintf(".%s-rotation.ht", fileStem(f))
+    return fmt.Sprintf(".rotations/%s-rotation.ht", fileStem(f))
 }
 
 func fileStem(f string) string {
     return f[:len(f) - len(filepath.Ext(f))]
-}
-
-func checkDict[V any](d map[string]V, k, msg string) {
-    if _, ok := d[k]; !ok { log.Fatalf(msg, k) }
 }
 
 func check(err error) {
