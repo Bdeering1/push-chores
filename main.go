@@ -18,85 +18,63 @@ type Person struct {
 }
 
 const ContactFile = "contacts.ht"
-const DataFile = "weekly.ht"
+const WeeklyFile = "weekly.ht"
+
+var dry,
+    force,
+    testOnly,
+    verbose,
+    yesToAll *bool
+var userRotation *int
+
+var contacts map[string]Person
+var tasks,
+    people,
+    recipients []string
 
 func main() {
-    dry := flag.Bool("d", false, "do not send email")
-    force := flag.Bool("f", false, "skip checks and send email")
-    fRotation := flag.Int("r", -1, "manually set rotation")
-    testOnly := flag.Bool("t", false, "send test email without affecting rotation")
-    verbose := flag.Bool("v", false, "print rotation information")
-    autoConfirm := flag.Bool("y", false, "auto confirm all prompts")
+    dry          = flag.Bool("d", false, "do not send email")
+    force        = flag.Bool("f", false, "skip checks and send email")
+    testOnly     = flag.Bool("t", false, "send test email without affecting rotation")
+    verbose      = flag.Bool("v", false, "print rotation information")
+    yesToAll     = flag.Bool("y", false, "auto confirm all prompts")
+    userRotation = flag.Int("r", -1, "manually set rotation")
     flag.Parse()
 
-    contacts := map[string]Person{}
-    contactFile, err := os.Open(ContactFile); check(err)
-    defer contactFile.Close()
-    for sc := bufio.NewScanner(contactFile); sc.Scan(); {
-        n, e := splitTuple(sc.Text(), " ")
-        contacts[n] = Person{name: n, email: e}
-    }
+    readContacts()
+    readDataFile(WeeklyFile)
 
-    chores := []string{}
-    people := []string{}
-    to := []string{}
-    dataFile, err := os.Open(DataFile); check(err)
-    defer dataFile.Close()
-    sc := bufio.NewScanner(dataFile)
-    for sc.Scan() && sc.Text() != "---" {
-        person := normalize(sc.Text());
-        people = append(people, person)
-        if _, ok := contacts[person]; !ok {
-            if *force { continue }
-            log.Fatalf("%s not in contacts", person)
-        }
-        if *testOnly { continue }
-        to = append(to, contacts[person].email)
-    }
-    for sc.Scan() {
-        chores = append(chores, normalize(sc.Text()))
-    }
+    rtnFileName := rotationFileName(WeeklyFile)
+    lastCycle, rotation := readRotationFile(rtnFileName)
 
-    lastWeek, rotation := 0, 0
-    rtnFileName := rotationFileName(DataFile)
-    _, err = os.Stat(rtnFileName)
-    if !os.IsNotExist(err) {
-        b, err := os.ReadFile(rtnFileName); check(err)
-
-        a := strings.Split(string(b), " ")
-        lastWeek, err = strconv.Atoi(a[0]); check(err)
-        rotation, err = strconv.Atoi(a[1]); check(err)
-    }
-
-    est, _ := time.LoadLocation("EST")
-    t := time.Now().In(est)
-    _, week := t.ISOWeek()
+    t := getTime()
+    _, thisCycle := t.ISOWeek()
 
     if *verbose {
-        fmt.Printf("Stored week: %d\nCurrent week: %d\n", lastWeek, week)
+        fmt.Printf("Stored week: %d\nCurrent week: %d\n", lastCycle, thisCycle)
         fmt.Println("Rotation:", rotation)
     }
 
     if *dry { return }
-    if *force || week != lastWeek {
+    if *force || thisCycle != lastCycle {
         if !*testOnly { rotation++ }
-        if *fRotation != -1 { rotation = *fRotation }
+        if *userRotation != -1 { rotation = *userRotation }
         login()
 
         content := MailContent{
             subject: "Weekly Chore Rotation",
-            body: craftMessage(t, rotation, people, chores),
+            body: craftMessage(t, rotation, people, tasks),
         }
-        to = append(to, contacts["automail"].email)
-        send(content, to, *autoConfirm)
+        recipients = append(recipients, contacts["automail"].email)
+        send(content, recipients, *yesToAll)
     } else {
-        fmt.Println("Already notified for this week. Use -f to force.")
+        fmt.Println("Already notified for this cycle. Use -f to force.")
     }
 
     if *testOnly { return }
     rotationFile, err := os.Create(rtnFileName); check(err)
     defer rotationFile.Close()
-    s := fmt.Sprintf("%d %d", week, rotation)
+    s := fmt.Sprintf("%d %d", thisCycle, rotation)
     _, err = rotationFile.WriteString(s); check(err)
 }
 
@@ -118,6 +96,59 @@ func craftMessage(t time.Time, rot int, people []string, chores []string) string
         msg += fmt.Sprintf("%s - %s<br/>", p, chores[(i + rot) % len(chores)])
     }
     return msg + fmt.Sprintf("<br/>%s,<br/>Chore Bot", signoffs[rot % len(signoffs)])
+}
+
+func readDataFile(dFileName string) {
+    tasks = []string{}
+    people = []string{}
+    recipients = []string{}
+
+    dataFile, err := os.Open(dFileName); check(err)
+    defer dataFile.Close()
+
+    sc := bufio.NewScanner(dataFile)
+    for sc.Scan() && sc.Text() != "---" {
+        person := normalize(sc.Text());
+        people = append(people, person)
+        if _, ok := contacts[person]; !ok {
+            if *force { continue }
+            log.Fatalf("%s not in contacts", person)
+        }
+        if *testOnly { continue }
+        recipients = append(recipients, contacts[person].email)
+    }
+    for sc.Scan() {
+        tasks = append(tasks, normalize(sc.Text()))
+    }
+}
+
+func readContacts() {
+    contacts = map[string]Person{}
+    contactFile, err := os.Open(ContactFile); check(err)
+    defer contactFile.Close()
+
+    for sc := bufio.NewScanner(contactFile); sc.Scan(); {
+        if len(sc.Text()) < 8 { continue }
+        n, e := splitTuple(sc.Text(), " ")
+        contacts[n] = Person{name: n, email: e}
+    }
+}
+
+func readRotationFile(rtnFileName string) (last int, rot int) {
+    _, err := os.Stat(rtnFileName)
+    if !os.IsNotExist(err) {
+        b, err := os.ReadFile(rtnFileName); check(err)
+
+        a := strings.Split(string(b), " ")
+        last, err = strconv.Atoi(a[0]); check(err)
+        rot, err = strconv.Atoi(a[1]); check(err)
+    }
+    return
+}
+
+func getTime() time.Time {
+    est, _ := time.LoadLocation("EST")
+    return time.Now().In(est)
 }
 
 func splitTuple(s, sep string) (string, string) {
