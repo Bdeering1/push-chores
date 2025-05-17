@@ -26,7 +26,7 @@ func login() {
     sender, err = d.Dial(); check(err)
 }
 
-func send(cont MailContent, to []string) {
+func send(cont MailContent, to []string, autoConfirm bool) {
     if len(to) == 0 { log.Fatalf("Cannot send mail: recipient list is empty") }
     user := tryGetEnv("MAIL_USER")
 
@@ -37,13 +37,15 @@ func send(cont MailContent, to []string) {
     m.SetBody("text/html", cont.body)
 
     fmt.Printf("\nTo: %v\nSubject: %s\nMessage:\n%s\n\n", to, cont.subject, cont.body)
-    fmt.Print("Send? ")
 
-    sc := bufio.NewScanner(os.Stdin)
-    sc.Scan(); input := normalize(sc.Text())
-    if input != "y" && input != "yes" {
-        fmt.Println("Nothing sent")
-        return
+    if !autoConfirm {
+        fmt.Print("Send? ")
+        sc := bufio.NewScanner(os.Stdin)
+        sc.Scan(); input := normalize(sc.Text())
+        if !(input == "y" || input == "yes") {
+            fmt.Println("Nothing sent")
+            return
+        }
     }
 
     err := gomail.Send(sender, m); check(err)

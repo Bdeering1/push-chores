@@ -21,9 +21,12 @@ const ContactFile = "contacts.ht"
 const DataFile = "weekly.ht"
 
 func main() {
+    dry := flag.Bool("d", false, "do not send email")
     force := flag.Bool("f", false, "skip checks and send email")
     fRotation := flag.Int("r", -1, "manually set rotation")
     testOnly := flag.Bool("t", false, "send test email without affecting rotation")
+    verbose := flag.Bool("v", false, "print rotation information")
+    autoConfirm := flag.Bool("y", false, "auto confirm all prompts")
     flag.Parse()
 
     contacts := map[string]Person{}
@@ -69,6 +72,12 @@ func main() {
     t := time.Now().In(est)
     _, week := t.ISOWeek()
 
+    if *verbose {
+        fmt.Printf("Stored week: %d\nCurrent week: %d\n", lastWeek, week)
+        fmt.Println("Rotation:", rotation)
+    }
+
+    if *dry { return }
     if *force || week != lastWeek {
         if !*testOnly { rotation++ }
         if *fRotation != -1 { rotation = *fRotation }
@@ -79,7 +88,7 @@ func main() {
             body: craftMessage(t, rotation, people, chores),
         }
         to = append(to, contacts["automail"].email)
-        send(content, to)
+        send(content, to, *autoConfirm)
     } else {
         fmt.Println("Already notified for this week. Use -f to force.")
     }
