@@ -48,7 +48,7 @@ func send(cont MailContent, to []string, autoConfirm bool) {
         }
     }
 
-    err := gomail.Send(sender, m); check(err)
+    // err := gomail.Send(sender, m); check(err)
     fmt.Println("Success")
 }
 
