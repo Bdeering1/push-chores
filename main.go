@@ -91,7 +91,7 @@ func craftMessage(t time.Time, rot int, people []string, chores []string) string
         "Keep up the good work",
     }
 
-    msg := fmt.Sprintf("%s, %s %d, %d<br/><br/>Chores this week:<br/>", t.Weekday(), t.Month(), t.Day(), t.Year())
+    msg := fmt.Sprintf("%s - %s<br/><br/>Chores this week:<br/>", getTimeString(t), getTimeString(t.AddDate(0, 0, 6)))
     for i, p := range people {
         msg += fmt.Sprintf("%s - %s<br/>", p, chores[(i + rot) % len(chores)])
     }
@@ -149,6 +149,10 @@ func readRotationFile(rtnFileName string) (last int, rot int) {
 func getTime() time.Time {
     est, _ := time.LoadLocation("EST")
     return time.Now().In(est)
+}
+
+func getTimeString(t time.Time) string {
+    return fmt.Sprintf("%s, %s %d, %d", t.Weekday(), t.Month(), t.Day(), t.Year())
 }
 
 func splitTuple(s, sep string) (string, string) {
