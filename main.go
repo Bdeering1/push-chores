@@ -20,12 +20,13 @@ type Person struct {
 const ContactFile = "contacts.ht"
 const WeeklyFile = "weekly.ht"
 
+var userRotation *int
+var logTo *string
 var dry,
     force,
     testOnly,
     verbose,
     yesToAll *bool
-var userRotation *int
 
 var contacts map[string]Person
 var tasks,
@@ -33,12 +34,13 @@ var tasks,
     recipients []string
 
 func main() {
+    userRotation = flag.Int("r", -1, "manually set rotation")
+    logTo        = flag.String("l", "", "output message and send other info to specified log file")
     dry          = flag.Bool("d", false, "do not send email")
     force        = flag.Bool("f", false, "skip checks and send email")
     testOnly     = flag.Bool("t", false, "send test email without affecting rotation")
     verbose      = flag.Bool("v", false, "print rotation information")
     yesToAll     = flag.Bool("y", false, "auto confirm all prompts")
-    userRotation = flag.Int("r", -1, "manually set rotation")
     flag.Parse()
 
     readContacts()
@@ -50,9 +52,16 @@ func main() {
     t := getTime()
     _, thisCycle := t.ISOWeek()
 
+    log.SetFlags(0)
+    if *logTo != "" {
+        logFile, err := os.OpenFile(*logTo, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644); check(err)
+        defer logFile.Close()
+        log.SetOutput(logFile)
+    }
+
     if *verbose {
-        fmt.Printf("Stored week: %d\nCurrent week: %d\n", lastCycle, thisCycle)
-        fmt.Println("Rotation:", rotation)
+        log.Printf("Stored week: %d\nCurrent week: %d\n", lastCycle, thisCycle)
+        log.Println("Rotation:", rotation)
     }
 
     if *dry { return }
@@ -61,14 +70,19 @@ func main() {
         if *userRotation != -1 { rotation = *userRotation }
         login()
 
+        msg := craftMessage(t, rotation, people, tasks)
+        if *logTo != "" {
+            fmt.Print(msg)
+        }
+
         content := MailContent{
             subject: "Weekly Chore Rotation",
-            body: craftMessage(t, rotation, people, tasks),
+            body: msg,
         }
         recipients = append(recipients, contacts["automail"].email)
         send(content, recipients, *yesToAll)
     } else {
-        fmt.Println("Already notified for this cycle. Use -f to force.")
+        log.Println("Already notified for this cycle. Use -f to force.")
     }
 
     if *testOnly { return }

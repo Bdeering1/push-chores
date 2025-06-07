@@ -36,20 +36,20 @@ func send(cont MailContent, to []string, autoConfirm bool) {
     m.SetHeader("Subject", cont.subject)
     m.SetBody("text/html", cont.body)
 
-    fmt.Printf("\nTo: %v\nSubject: %s\nMessage:\n%s\n\n", to, cont.subject, cont.body)
+    log.Printf("To: %v\nSubject: %s\nMessage:\n%s\n", to, cont.subject, cont.body)
 
     if !autoConfirm {
-        fmt.Print("Send? ")
+        fmt.Print("\nSend? ")
         sc := bufio.NewScanner(os.Stdin)
         sc.Scan(); input := normalize(sc.Text())
         if !(input == "y" || input == "yes") {
-            fmt.Println("Nothing sent")
+            log.Print("\nNothing sent\n\n")
             return
         }
     }
 
     err := gomail.Send(sender, m); check(err)
-    fmt.Println("Success")
+    log.Println("Success")
 }
 
 func tryGetEnv(name string) string {
